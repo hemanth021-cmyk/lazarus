@@ -31,7 +31,7 @@ function PatientListItem({ patient, isSelected, onClick }) {
     >
       <div className="flex justify-between items-start">
         <span className={`font-bold text-[14px] ${isCritical ? 'text-neg-red' : 'text-text-dark'}`}>
-          {patient.patient_id} <span className="text-[10px] text-text-muted">[{patient.parity}]</span>
+          {patient.ghost_id} <span className="text-[10px] text-text-muted">[{patient.internal_id}]</span>
         </span>
         <span className={`text-[9px] px-1.5 py-0.5 font-bold tracking-wider rounded-sm ${
           isCritical 
@@ -48,7 +48,7 @@ function PatientListItem({ patient, isSelected, onClick }) {
         </div>
       </div>
       <div className="flex justify-between items-end mt-2.5">
-        <span className="text-[10px] text-text-muted font-bold tracking-widest uppercase rounded-sm bg-card border border-border-div px-2 py-0.5 shadow-sm">WARD {patient.ward_code}</span>
+        <span className="text-[10px] text-text-muted font-bold tracking-widest uppercase rounded-sm bg-card border border-border-div px-2 py-0.5 shadow-sm">ROOM {patient.room_id || '---'}</span>
         <span className={`text-[12px] font-bold ${isCritical ? 'text-neg-red' : 'text-text-dark'}`}>{lastBPM} BPM</span>
       </div>
       <div className="h-6 mt-3 opacity-90">
@@ -64,7 +64,7 @@ export default function Sidebar({ patients, selectedPatientId, onSelectPatient }
   const filteredPatients = patients.filter(p => {
     const searchLow = searchTerm.toLowerCase();
     return p.decodedName.toLowerCase().includes(searchLow) || 
-           p.patient_id.toLowerCase().includes(searchLow);
+           p.ghost_id.toLowerCase().includes(searchLow);
   });
 
   return (

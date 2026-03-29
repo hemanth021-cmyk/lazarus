@@ -13,7 +13,8 @@ export default function AuditLog({ logs }) {
         <table className="w-full text-left text-[12px] relative">
           <thead className="sticky top-0 bg-white z-20 shadow-sm">
             <tr className="text-text-muted uppercase tracking-wider border-b border-border-div text-[10px]">
-              <th className="p-3 pl-6 w-32 font-semibold">Timestamp</th>
+              <th className="p-3 pl-6 w-24 font-semibold">Packet ID</th>
+              <th className="p-3 w-32 font-semibold">Timestamp</th>
               <th className="p-3 w-40 font-semibold">Patient ID</th>
               <th className="p-3 w-24 font-semibold">Type</th>
               <th className="p-3 font-mono font-semibold">Decoded Value</th>
@@ -24,7 +25,8 @@ export default function AuditLog({ logs }) {
           <tbody>
             {logs.map((log, i) => (
               <tr key={i} className={`border-b border-border-div/50 hover:bg-white transition-colors text-text-dark font-mono ${log.interpolated ? 'bg-[#F59E0B]/5' : ''}`}>
-                <td className="py-2.5 px-6 text-text-muted whitespace-nowrap">{log.timestamp}</td>
+                <td className="py-2.5 px-6 text-text-muted">#{log.packetId}</td>
+                <td className="py-2.5 p-3 text-text-muted whitespace-nowrap">{log.timestamp}</td>
                 <td className="py-2.5 p-3 font-sans font-bold text-text-dark">{log.patientId}</td>
                 <td className={`py-2.5 p-3 font-bold font-sans ${log.type === 'BPM' ? 'text-primary' : 'text-pos-green'}`}>
                   <span className={`px-2 py-0.5 rounded-sm ${log.type === 'BPM' ? 'bg-primary/10' : 'bg-pos-green/10'}`}>{log.type}</span>

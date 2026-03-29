@@ -11,8 +11,16 @@ import { useLiveTelemetry } from './hooks/useLiveTelemetry';
 import './App.css';
 
 function App() {
-  const { patients, selectedPatient, setSelectedPatientId, auditLog } = useLiveTelemetry();
+  const { patients, selectedPatient, setSelectedPatientId, auditLog, loading } = useLiveTelemetry();
   const [activeTab, setActiveTab] = useState('HOME');
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-page text-primary font-bold animate-pulse uppercase tracking-[0.2em]">
+        🧬 Initializing Lazarus Forensic Engine...
+      </div>
+    );
+  }
 
   const stats = {
     activeAlerts: patients.some(p => p.vitalStatus?.severity === 'CRITICAL'),

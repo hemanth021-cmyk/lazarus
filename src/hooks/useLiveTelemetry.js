@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { mockPatients } from '../utils/mockData.js';
+import { useState, useEffect, useRef } from 'react';
+import { parseCSV } from '../utils/csvParser.js';
 import { decodePatientName, decodeBPM, decodeO2, decryptMedication } from '../utils/decoders.js';
 import { interpolateReadings } from '../utils/interpolation.js';
 import { checkVitals } from '../utils/alerts.js';
@@ -10,110 +10,177 @@ export function useLiveTelemetry() {
   const [auditLog, setAuditLog] = useState([]);
   const [globalAlert, setGlobalAlert] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // Initialize Data Once
+  // Use refs to store the large datasets and indices without triggering re-renders
+  const rawDataRef = useRef({ demographics: [], prescriptions: {}, telemetry: {} });
+  const indicesRef = useRef({}); // ghost_id -> currentPacketIndex
+
+  // 1. Initial Data Load & Join
   useEffect(() => {
-    let log = [];
-    const processed = mockPatients.map((p) => {
-      const age = p.dob ? Math.floor((new Date() - new Date(p.dob).getTime()) / 3.15576e+10) : null;
-      const decodedName = decodePatientName(p.raw_name, age);
-      
-      const decodedBPMs = p.hex_bpm.map(hex => decodeBPM(hex)).map(b => isNaN(b) ? 0 : Math.max(30, Math.min(200, b)));
-      const decodedO2s = p.hex_o2.map(decodeO2);
-      const interpolatedO2s = interpolateReadings(decodedO2s).map(o => o === null ? 0 : Math.max(85, Math.min(100, o)));
-      
-      const parity = calculateParity(decodedBPMs);
-      const uniqueId = `${p.patient_id}-${parity}`;
-      
-      const decryptedMeds = p.medications.map(m => ({
-        ...m,
-        decrypted_name: decryptMedication(m.scrambled, m.age_key)
-      }));
+    async function loadLazarusData() {
+      try {
+        const [demoData, rxData, telData] = await Promise.all([
+          parseCSV('./data/demographics.csv'),
+          parseCSV('./data/prescriptions.csv'),
+          parseCSV('./data/telemetry.csv')
+        ]);
 
-      const currentBPM = decodedBPMs[decodedBPMs.length - 1];
-      const currentO2 = interpolatedO2s[interpolatedO2s.length - 1];
-      const vitalStatus = checkVitals(currentBPM, currentO2);
+        console.log(`Lazarus Engine: Loaded ${demoData.length} patients, ${telData.length} telemetry packets.`);
 
-      p.hex_bpm.forEach((hex, i) => {
-        log.push({ timestamp: new Date().toLocaleTimeString(), patientId: uniqueId, type: 'BPM', rawHex: hex, decodedVal: decodedBPMs[i] });
-      });
-      p.hex_o2.forEach((hex, i) => {
-        log.push({ timestamp: new Date().toLocaleTimeString(), patientId: uniqueId, type: 'O2', rawHex: hex, decodedVal: interpolatedO2s[i], interpolated: hex === '0x00' });
-      });
+        // Group prescriptions by ghost_id
+        const prescriptionsByGhost = rxData.reduce((acc, curr) => {
+          if (!acc[curr.ghost_id]) acc[curr.ghost_id] = [];
+          acc[curr.ghost_id].push(curr);
+          return acc;
+        }, {});
 
-      return {
-        ...p,
-        uniqueId, age, decodedName, decodedBPMs, interpolatedO2s, decryptedMeds, parity, vitalStatus
-      };
-    });
+        // Group telemetry by ghost_id
+        const telemetryByGhost = telData.reduce((acc, curr) => {
+          if (!acc[curr.ghost_id]) acc[curr.ghost_id] = [];
+          acc[curr.ghost_id].push(curr);
+          return acc;
+        }, {});
 
-    setPatients(processed);
-    setAuditLog(log.reverse());
-    setSelectedPatientId(processed[0]?.uniqueId);
-  }, []); // Run only on mount
+        rawDataRef.current = { 
+          demographics: demoData, 
+          prescriptions: prescriptionsByGhost, 
+          telemetry: telemetryByGhost 
+        };
 
-  // Simulation Interval Engine
-  useEffect(() => {
-    if (patients.length === 0) return;
-
-    const intervalId = setInterval(() => {
-      setPatients(prevPatients => {
-        let isGlobalCritical = false;
-        let newEntries = [];
-        const timestamp = new Date().toLocaleTimeString();
-
-        const updated = prevPatients.map(p => {
-          const lastBPM = p.decodedBPMs[p.decodedBPMs.length - 1] || 75;
-          const newBPMDec = Math.max(30, Math.min(200, lastBPM + Math.floor(Math.random() * 11) - 5));
-          const newBPMHex = '0x' + newBPMDec.toString(16).toUpperCase().padStart(2, '0');
+        // Initialize state for a subset of patients (e.g., first 10 for the dashboard)
+        const initialPatients = demoData.slice(0, 15).map(p => {
+          const age = parseInt(p.age);
+          const decodedName = decodePatientName(p.name, age);
+          const ghostId = p.ghost_id;
           
-          let newO2Hex, newO2Dec;
-          if (Math.random() > 0.9) { 
-            newO2Hex = '0x00';
-            newO2Dec = null;
-          } else {
-            const lastO2 = p.interpolatedO2s[p.interpolatedO2s.length - 1] || 98;
-            newO2Dec = Math.max(85, Math.min(100, lastO2 + Math.floor(Math.random() * 3) - 1));
-            newO2Hex = '0x' + Math.round(newO2Dec * 1.27).toString(16).toUpperCase().padStart(2, '0');
-          }
-
-          const newBPMArray = [...p.decodedBPMs, decodeBPM(newBPMHex)].slice(-30);
-          const newO2RawArray = [...p.hex_o2, newO2Hex].slice(-30);
-          const newInterpolatedO2s = interpolateReadings(newO2RawArray.map(decodeO2));
+          // Get first few packets for initial chart
+          const pTel = telemetryByGhost[ghostId] || [];
+          const initialPackets = pTel.slice(0, 10);
           
-          const currentBPM = newBPMArray[newBPMArray.length - 1];
-          const currentO2 = newInterpolatedO2s[newInterpolatedO2s.length - 1];
-          const newStatus = checkVitals(currentBPM, currentO2);
+          const decodedBPMs = initialPackets.map(pkt => decodeBPM(pkt.heart_rate_hex));
+          const rawO2s = initialPackets.map(pkt => pkt.spO2 === "" ? null : parseFloat(pkt.spO2));
+          // Wrap in a fake hex-like object structure for existing interpolator
+          const hexO2s = initialPackets.map(pkt => pkt.spO2 === "" ? '0x00' : '0xFF');
+          const interpolatedO2s = interpolateReadings(rawO2s);
 
-          if (newStatus.severity === 'CRITICAL') isGlobalCritical = true;
+          const currentBPM = decodedBPMs[decodedBPMs.length - 1] || 0;
+          const currentO2 = interpolatedO2s[interpolatedO2s.length - 1] || 0;
+          
+          const parity = calculateParity(decodedBPMs);
+          const uniqueId = `${p.internal_id}-${parity}`;
+          indicesRef.current[ghostId] = 10; // Start playback from index 10
 
-          newEntries.push({ timestamp, patientId: p.uniqueId, type: 'BPM', rawHex: newBPMHex, decodedVal: currentBPM });
-          newEntries.push({ timestamp, patientId: p.uniqueId, type: 'O2', rawHex: newO2Hex, decodedVal: currentO2, interpolated: newO2Hex === '0x00' });
+          const pMeds = (prescriptionsByGhost[ghostId] || []).map(m => ({
+            ...m,
+            decrypted_name: decryptMedication(m.scrambled_med, age)
+          }));
 
           return {
             ...p,
-            decodedBPMs: newBPMArray,
-            hex_o2: newO2RawArray,
-            interpolatedO2s: newInterpolatedO2s,
-            vitalStatus: newStatus
+            uniqueId,
+            age,
+            decodedName,
+            decodedBPMs,
+            hex_o2: hexO2s, // Maintain for legacy compatibility in logic
+            interpolatedO2s,
+            decryptedMeds: pMeds,
+            parity,
+            vitalStatus: checkVitals(currentBPM, currentO2)
           };
         });
 
-        setGlobalAlert(isGlobalCritical);
-        setAuditLog(prevLog => [...newEntries.reverse(), ...prevLog].slice(0, 200));
+        setPatients(initialPatients);
+        setSelectedPatientId(initialPatients[0]?.uniqueId);
+        setLoading(false);
+      } catch (err) {
+        console.error("Lazarus Data Loading Failed:", err);
+      }
+    }
 
-        return updated;
+    loadLazarusData();
+  }, []);
+
+  // 2. Playback Engine
+  useEffect(() => {
+    if (loading || patients.length === 0) return;
+
+    const intervalId = setInterval(() => {
+      const { telemetry } = rawDataRef.current;
+      const timestamp = new Date().toLocaleTimeString();
+      let isGlobalCritical = false;
+      let newLogEntries = [];
+
+      setPatients(prevPatients => {
+        return prevPatients.map(p => {
+          const ghostId = p.ghost_id;
+          const pTel = telemetry[ghostId] || [];
+          const currentIndex = indicesRef.current[ghostId] || 0;
+          
+          // Get the next packet
+          const nextIndex = currentIndex >= pTel.length ? 0 : currentIndex;
+          const packet = pTel[nextIndex];
+          indicesRef.current[ghostId] = nextIndex + 1;
+
+          if (!packet) return p;
+
+          const newBPM = decodeBPM(packet.heart_rate_hex);
+          const newO2Raw = packet.spO2 === "" ? null : parseFloat(packet.spO2);
+          
+          const updatedBPMs = [...p.decodedBPMs, newBPM].slice(-30);
+          const updatedRawO2s = [...p.interpolatedO2s, newO2Raw].slice(-30); 
+          const finalO2s = interpolateReadings(updatedRawO2s);
+
+          const currentBPM = updatedBPMs[updatedBPMs.length - 1];
+          const currentO2 = finalO2s[finalO2s.length - 1];
+          const status = checkVitals(currentBPM, currentO2);
+
+          if (status.severity === 'CRITICAL') isGlobalCritical = true;
+
+          // Add to log
+          newLogEntries.push({
+            timestamp,
+            patientId: p.uniqueId,
+            type: 'BPM',
+            rawHex: packet.heart_rate_hex,
+            decodedVal: newBPM,
+            packetId: packet.packet_id,
+            roomId: packet.room_id
+          });
+          newLogEntries.push({
+            timestamp,
+            patientId: p.uniqueId,
+            type: 'O2',
+            rawHex: packet.spO2 === "" ? '0x00' : '0xFF',
+            decodedVal: currentO2,
+            interpolated: packet.spO2 === "" ,
+            packetId: packet.packet_id,
+            roomId: packet.room_id
+          });
+
+          return {
+            ...p,
+            decodedBPMs: updatedBPMs,
+            interpolatedO2s: finalO2s,
+            vitalStatus: status
+          };
+        });
       });
+
+      setGlobalAlert(isGlobalCritical);
+      setAuditLog(prev => [...newLogEntries.reverse(), ...prev].slice(0, 150));
     }, 2000);
 
     return () => clearInterval(intervalId);
-  }, [patients.length]); // Re-bind interval only if initial array length changed
+  }, [loading, patients.length]);
 
   return {
     patients,
     selectedPatient: patients.find(p => p.uniqueId === selectedPatientId) || patients[0],
     setSelectedPatientId,
     auditLog,
-    globalAlert
+    globalAlert,
+    loading
   };
 }
+

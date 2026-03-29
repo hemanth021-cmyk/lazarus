@@ -5,8 +5,8 @@ export default function Header({ stats }) {
     <header className="sticky top-0 w-full h-14 border-b border-border-div bg-card z-50 flex items-center justify-between px-6 shadow-sm shrink-0">
       <div className="flex items-center gap-4">
         <h1 className="text-lg font-bold tracking-tight text-text-dark flex items-center gap-2">
-           <img src="/logo.png" alt="Lazarus Logo" className="w-8 h-8 object-contain rounded-md shadow-[0_0_10px_rgba(14,165,233,0.3)]"/>
-           Project Lazarus
+          <img src="./logo.png" alt="Lazarus Logo" className="w-8 h-8 object-contain rounded-md shadow-[0_0_10px_rgba(14,165,233,0.3)]"/>
+          Project Lazarus
         </h1>
         <span className="text-xs text-text-muted border-l border-border-div pl-4 py-1">Forensic Recovery System</span>
       </div>
