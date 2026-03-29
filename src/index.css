@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-page text-text-body font-sans m-0 p-0 antialiased overflow-x-hidden;
+  }
+}
+
+/* Custom styles for SVG charting */
+.spline-path {
+  fill: none;
+  stroke-width: 2.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
