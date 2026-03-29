@@ -5,7 +5,7 @@
   "type": "module",
   "homepage": "https://hemanth021-cmyk.github.io/lazarus/",
   "scripts": {
-    "start": "concurrently \"vite\" \"node server.js\"",
+    "start": "vite",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
